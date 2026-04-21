@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeChat</title>
+    <meta name="description" content="新感覚のコーディングSNS">
+    <meta name="viewport" content="width=device-width, initial-scale=1"> 
+
+    <!--リセットCSS-->
+        <link rel="stylesheet" href="https://unpkg.com/ress/dist/ress.min.css">
+
+    <!--Googleフォント-->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Philosopher&display=swap">
+
+    <!--オリジナルCSS-->
+        <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="page-header">
+        <div class="glitch-wrapper">
+        <h1 class="align-center font-english">
+            <div class="glitch" data-text="CodeChat">CodeChat</div>
+        </h1>
+        </div>
+    </header>
+    <h2 class="page-title">コーディング型SNS</h2>
+    <section class="auth-section">
+        <div class="auth-card">
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab auth-tab--active" data-target="sign-in">Sign In</button>
+                <button type="button" class="auth-tab" data-target="sign-up">Sign Up</button>
+            </div>
+            <div class="auth-forms">
+                <form class="auth-form auth-form--active" id="sign-in" action="#" method="post">
+                    <div class="auth-field">
+                        <label for="signin-id">ID</label>
+                        <input id="signin-id" type="text" placeholder="user123" required>
+                    </div>
+                    <div class="auth-field">
+                        <label for="signin-password">Password</label>
+                        <input id="signin-password" type="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="auth-button">Sign In</button>
+                </form>
+                <form class="auth-form" id="sign-up" action="#" method="post">
+                    <div class="auth-field">
+                        <label for="signup-name">ユーザー名</label>
+                        <input id="signup-name" type="text" placeholder="Your name" required>
+                    </div>
+                    <div class="auth-field">
+                        <label for="signup-id">ID</label>
+                        <input id="signup-id" type="text" placeholder="user123" required>
+                    </div>
+                    <div class="auth-field">
+                        <label for="signup-password">Password</label>
+                        <input id="signup-password" type="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="auth-button">Sign Up</button>
+                </form>
+            </div>
+        </div>
+    </section>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>

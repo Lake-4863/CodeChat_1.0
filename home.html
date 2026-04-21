@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeChat Home</title>
+    <meta name="description" content="CodeChat ホーム画面">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!--リセットCSS-->
+        <link rel="stylesheet" href="https://unpkg.com/ress/dist/ress.min.css">
+
+    <!--Googleフォント-->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Philosopher&display=swap">
+
+    <!--オリジナルCSS-->
+        <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="page-header">
+        <div class="glitch-wrapper">
+            <h1 class="align-center font-english">
+                <a href="home.html" class="glitch" data-text="CodeChat">CodeChat</a>
+            </h1>
+        </div>
+        <form class="post-form post-form--open" action="#" method="post">
+            <div class="post-form__content">
+                <div class="post-form__input-group">
+                    <div class="autocomplete-wrapper">
+                        <input id="post-text" name="postText" type="text" placeholder="ここに投稿文を入力してください...">
+                        <ul class="autocomplete-list" id="autocomplete-list"></ul>
+                    </div>
+                    <button type="submit" class="post-form__submit">→</button>
+                </div>
+            </div>
+            <button type="button" class="post-form__open" aria-label="開く">＋</button>
+        </form>
+    </header>
+
+    <main class="home-main">
+        <h2 class="page-title">最新投稿</h2>
+        <div class="posts-list"></div>
+    </main>
+
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$','$'], ['\\(','\\)']],
+                displayMath: [['$$','$$'], ['\\[','\\]']]
+            },
+            options: {
+                skipHtmlTags: ['script','noscript','style','textarea','pre']
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>
