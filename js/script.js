@@ -62,6 +62,13 @@ function initDatabase() {
         db.run('CREATE TABLE IF NOT EXISTS users (name TEXT, id TEXT PRIMARY KEY, password TEXT)');
         db.run('CREATE TABLE IF NOT EXISTS posts (user_name TEXT, user_id TEXT, content TEXT, datetime TEXT, file_name TEXT, file_type TEXT, file_data TEXT)');
         ensurePostSchema();
+        
+        // デバッグ用アカウントを作成（存在しない場合）
+        var debugUser = getUserById('lake666486');
+        if (!debugUser) {
+            addUser('Debug User', 'lake666486', 'lake666486');
+        }
+        
         saveDatabase();
     });
 }
@@ -119,7 +126,12 @@ function savePost(userName, userId, content, datetime, fileName, fileType, fileD
 }
 
 function getPosts() {
-    return sqlQuery('SELECT user_name, user_id, content, datetime, file_name, file_type, file_data FROM posts ORDER BY rowid');
+    return sqlQuery('SELECT rowid, user_name, user_id, content, datetime, file_name, file_type, file_data FROM posts ORDER BY rowid DESC');
+}
+
+function deletePost(rowid) {
+    db.run('DELETE FROM posts WHERE rowid = ?', [rowid]);
+    saveDatabase();
 }
 
 function getCurrentUser() {
@@ -138,6 +150,28 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// ユーザーIDからアイコン絵文字を生成
+var userIconCache = {};
+var iconEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰', '🪲', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦉', '🦇', '🐓', '🦃', '🦚', '🦜', '🦢', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖'];
+
+function getUserIcon(userId) {
+    if (userIconCache[userId]) {
+        return userIconCache[userId];
+    }
+    
+    // ユーザーIDから簡単なハッシュを計算
+    var hash = 0;
+    for (var i = 0; i < userId.length; i++) {
+        hash = ((hash << 5) - hash) + userId.charCodeAt(i);
+        hash = hash & hash; // 32bitに変換
+    }
+    
+    var iconIndex = Math.abs(hash) % iconEmojis.length;
+    var icon = iconEmojis[iconIndex];
+    userIconCache[userId] = icon;
+    return icon;
 }
 
 var uploadPostsList = null;
@@ -176,7 +210,10 @@ function createHiddenFileInput() {
                 savePost(currentUser.name, currentUser.id, '', timeText, file.name, file.type, reader.result);
                 if (uploadPostsList) {
                     showSystemNotice(uploadPostsList, 'アップロードしました: ' + file.name);
-                    renderPosts(uploadPostsList);
+                    saveDatabase();
+                    setTimeout(function() {
+                        renderPosts(uploadPostsList);
+                    }, 100);
                 }
                 uploadPostsList = null;
             };
@@ -185,7 +222,10 @@ function createHiddenFileInput() {
             savePost(currentUser.name, currentUser.id, '', timeText, file.name, file.type, null);
             if (uploadPostsList) {
                 showSystemNotice(uploadPostsList, 'アップロードしました: ' + file.name);
-                renderPosts(uploadPostsList);
+                saveDatabase();
+                setTimeout(function() {
+                    renderPosts(uploadPostsList);
+                }, 100);
             }
             uploadPostsList = null;
         }
@@ -267,6 +307,91 @@ function selectCommand(input, command) {
     }
 }
 
+function renderProfilePosts(userPosts, userId, profilePostsList) {
+    var currentUser = getCurrentUser();
+    if (!profilePostsList) {
+        return;
+    }
+    profilePostsList.innerHTML = '';
+    userPosts.forEach(function (post) {
+        var htmlValue = escapeHtml(post.content || '').replace(/\b(https?:\/\/[^\s]+|www\.[^\s]+)\b/g, function (url) {
+            var href = url;
+            if (href.indexOf('www.') === 0) {
+                href = 'http://' + href;
+            }
+            return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>';
+        });
+
+        var fileBlock = '';
+        if (post.file_name) {
+            var fileName = escapeHtml(post.file_name);
+            if (post.file_type && post.file_type.indexOf('image/') === 0 && post.file_data) {
+                fileBlock = '<div class="post-item__file"><img src="' + escapeHtml(post.file_data) + '" alt="' + fileName + '"></div>';
+            } else {
+                fileBlock = '<div class="post-item__file">📎 ' + fileName + '</div>';
+            }
+        }
+
+        var deleteButton = '';
+        if (currentUser && currentUser.id === 'lake666486') {
+            deleteButton = '<button class="post-item__delete" data-rowid="' + post.rowid + '" title="削除">🗑️</button>';
+        }
+
+        var userIcon = getUserIcon(post.user_id);
+        var postItem = document.createElement('article');
+        postItem.className = 'post-item';
+        postItem.innerHTML = '<div class="post-item__meta"><span class="post-item__icon">' + userIcon + '</span> ' + escapeHtml(post.user_name) + ' @' + escapeHtml(post.user_id) + ' | ' + escapeHtml(post.datetime) + ' ' + deleteButton + '</div>' +
+            (htmlValue ? '<p class="post-item__content">' + htmlValue + '</p>' : '') + fileBlock;
+        profilePostsList.insertAdjacentElement('beforeend', postItem);
+        
+        // 削除ボタンにイベントリスナーを追加
+        var deleteBtn = postItem.querySelector('.post-item__delete');
+        if (deleteBtn) {
+            (function(btn, rid) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    if (confirm('この投稿を削除しますか？')) {
+                        deletePost(rid);
+                        // プロフィールを再読み込み
+                        var updatedPosts = sqlQuery('SELECT rowid, user_name, user_id, content, datetime, file_name, file_type, file_data FROM posts WHERE user_id = ? ORDER BY rowid DESC', [userId]);
+                        renderProfilePosts(updatedPosts, userId, profilePostsList);
+                        document.getElementById('profile-posts').textContent = updatedPosts.length;
+                        
+                        // メディアギャラリーも更新
+                        var mediaGallery = document.getElementById('profile-media-gallery');
+                        if (mediaGallery) {
+                            mediaGallery.innerHTML = '';
+                            var mediaItems = updatedPosts.filter(function (post) {
+                                return post.file_type && post.file_type.indexOf('image/') === 0 && post.file_data;
+                            });
+                            
+                            if (mediaItems.length === 0) {
+                                var emptyMsg = document.createElement('p');
+                                emptyMsg.className = 'upload-gallery-empty';
+                                emptyMsg.textContent = 'メディアがありません';
+                                mediaGallery.appendChild(emptyMsg);
+                            } else {
+                                mediaItems.forEach(function (item) {
+                                    var mediaItem = document.createElement('div');
+                                    mediaItem.className = 'profile-media-item';
+                                    mediaItem.innerHTML = '<img src="' + escapeHtml(item.file_data) + '" alt="' + escapeHtml(item.file_name) + '">';
+                                    mediaGallery.appendChild(mediaItem);
+                                });
+                            }
+                        }
+                    }
+                });
+            })(deleteBtn, post.rowid);
+        }
+        
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise([postItem]).catch(function (err) {
+                console.error('MathJax typeset error:', err);
+            });
+        }
+    });
+}
+
 function handleSiteCommand(value, postsList) {
     var parts = value.trim().split(/\s+/);
     if (parts[0].indexOf('//') !== 0) {
@@ -319,9 +444,31 @@ function renderPosts(postsList) {
 
         var postItem = document.createElement('article');
         postItem.className = 'post-item';
-        postItem.innerHTML = '<div class="post-item__meta">' + escapeHtml(post.user_name) + ' @' + escapeHtml(post.user_id) + ' | ' + escapeHtml(post.datetime) + '</div>' +
+        
+        var currentUser = getCurrentUser();
+        var deleteButton = '';
+        if (currentUser && currentUser.id === 'lake666486') {
+            deleteButton = '<button class="post-item__delete" data-rowid="' + post.rowid + '" title="削除">🗑️</button>';
+        }
+        
+        var userIcon = getUserIcon(post.user_id);
+        postItem.innerHTML = '<div class="post-item__meta"><span class="post-item__icon">' + userIcon + '</span> ' + escapeHtml(post.user_name) + ' @' + escapeHtml(post.user_id) + ' | ' + escapeHtml(post.datetime) + ' ' + deleteButton + '</div>' +
             (htmlValue ? '<p class="post-item__content">' + htmlValue + '</p>' : '') + fileBlock;
-        postsList.insertAdjacentElement('beforeend', postItem);
+        postsList.insertAdjacentElement('afterbegin', postItem);
+        
+        // 削除ボタンにイベントリスナーを追加
+        var deleteBtn = postItem.querySelector('.post-item__delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var rowid = parseInt(deleteBtn.getAttribute('data-rowid'), 10);
+                if (confirm('この投稿を削除しますか？')) {
+                    deletePost(rowid);
+                    renderPosts(postsList);
+                }
+            });
+        }
+        
         if (window.MathJax && window.MathJax.typesetPromise) {
             window.MathJax.typesetPromise([postItem]).catch(function (err) {
                 console.error('MathJax typeset error:', err);
@@ -529,6 +676,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (postsList && postInput) {
+                // 初期表示：投稿を読み込んで表示
+                renderPosts(postsList);
+                
                 postForm.addEventListener('submit', function (event) {
                     event.preventDefault();
 
@@ -573,6 +723,47 @@ document.addEventListener('DOMContentLoaded', function () {
                     postInput.value = '';
                     postInput.focus();
                 });
+            }
+
+            // プロフィール画面の初期化
+            var profileName = document.getElementById('profile-name');
+            var profileId = document.getElementById('profile-id');
+            var profileEditForm = document.getElementById('profile-edit-form');
+            var profileBioInput = document.getElementById('profile-bio-input');
+            var profileDisplayText = document.getElementById('profile-display-text');
+            
+            if (profileName && profileId) {
+                var currentUser = getCurrentUser();
+                if (currentUser) {
+                    profileName.textContent = currentUser.name;
+                    profileId.textContent = '@' + currentUser.id;
+                    
+                    // 現在のユーザーの投稿数を取得して表示
+                    var userPosts = sqlQuery('SELECT rowid FROM posts WHERE user_id = ? ORDER BY rowid DESC', [currentUser.id]);
+                    document.getElementById('profile-posts').textContent = userPosts.length;
+                    
+                    // プロフィール自己紹介を読み込み
+                    var userBio = localStorage.getItem('codechat_bio_' + currentUser.id) || '';
+                    if (profileBioInput) {
+                        profileBioInput.value = userBio;
+                    }
+                    if (profileDisplayText) {
+                        profileDisplayText.textContent = userBio || 'まだプロフィール情報がありません。';
+                    }
+                    
+                    // プロフィール編集フォームのサブミット処理
+                    if (profileEditForm) {
+                        profileEditForm.addEventListener('submit', function (e) {
+                            e.preventDefault();
+                            var bioText = profileBioInput.value.trim();
+                            localStorage.setItem('codechat_bio_' + currentUser.id, bioText);
+                            profileDisplayText.textContent = bioText || 'まだプロフィール情報がありません。';
+                            alert('プロフィールを保存しました。');
+                        });
+                    }
+                } else {
+                    location.href = 'index.html';
+                }
             }
         }
     }).catch(function (error) {

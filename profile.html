@@ -33,9 +33,51 @@
         </form>
     </header>
     <main class="home-main">
-        <h2 class="page-title">プロフィール</h2>
-        <p class="landing-text">プロフィールページです。ここにユーザー情報や投稿履歴を表示できます。</p>
-        <div class="posts-list"></div>
+        <div class="profile-container">
+            <div class="profile-header">
+                <div class="profile-banner"></div>
+                <div class="profile-info-wrapper">
+                    <div class="profile-avatar-wrapper">
+                        <div class="profile-avatar">👤</div>
+                    </div>
+                    <div class="profile-details">
+                        <h2 class="profile-name" id="profile-name">ユーザー名</h2>
+                        <p class="profile-id" id="profile-id">@userid</p>
+                        <p class="profile-bio" id="profile-bio">プロフィールの説明文</p>
+                        <div class="profile-stats">
+                            <div class="profile-stat">
+                                <span class="profile-stat-value" id="profile-posts">0</span>
+                                <span class="profile-stat-label">投稿</span>
+                            </div>
+                            <div class="profile-stat">
+                                <span class="profile-stat-value" id="profile-followers">0</span>
+                                <span class="profile-stat-label">フォロワー</span>
+                            </div>
+                            <div class="profile-stat">
+                                <span class="profile-stat-value" id="profile-follows">0</span>
+                                <span class="profile-stat-label">フォロー中</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="profile-content">
+                <div class="profile-info-details">
+                    <h3>プロフィール編集</h3>
+                    <form id="profile-edit-form" class="profile-edit-form">
+                        <div class="profile-edit-field">
+                            <label for="profile-bio-input">自己紹介</label>
+                            <textarea id="profile-bio-input" placeholder="自己紹介を入力してください" rows="4"></textarea>
+                        </div>
+                        <button type="submit" class="profile-edit-button">保存</button>
+                    </form>
+                    <div class="profile-display-bio">
+                        <p><strong>プロフィール</strong></p>
+                        <p id="profile-display-text">プロフィールの詳細説明文がここに表示されます。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
     <script>
         window.MathJax = {
