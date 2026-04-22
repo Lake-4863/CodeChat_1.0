@@ -16,11 +16,6 @@ var SLASH_COMMANDS = [
         ]
     },
     { 
-        name: 'file', 
-        description: 'ファイル参照モードに移行',
-        arguments: []
-    },
-    { 
         name: 'upload', 
         description: 'ファイルを選択してアップロード',
         arguments: []
