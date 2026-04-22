@@ -19,7 +19,7 @@
                 <a href="home.html" class="glitch" data-text="CodeChat">CodeChat</a>
             </h1>
         </div>
-        <form class="post-form post-form--open" action="#" method="post">
+        <form class="post-form post-form--open" action="#" method="get">
             <div class="post-form__content">
                 <div class="post-form__input-group">
                     <div class="autocomplete-wrapper">
@@ -64,13 +64,8 @@
             <div class="profile-content">
                 <div class="profile-info-details">
                     <h3>プロフィール編集</h3>
-                    <form id="profile-edit-form" class="profile-edit-form">
-                        <div class="profile-edit-field">
-                            <label for="profile-bio-input">自己紹介</label>
-                            <textarea id="profile-bio-input" placeholder="自己紹介を入力してください" rows="4"></textarea>
-                        </div>
-                        <button type="submit" class="profile-edit-button">保存</button>
-                    </form>
+                    <p>プロフィールの編集はコマンド入力で行います。投稿欄に <code>/edit profile あなたの自己紹介</code> のように入力してください。<br>
+                    アイコン画像とヘッダー画像は <code>/edit icon</code>、<code>/edit header</code> を入力してファイル選択してください。</p>
                     <div class="profile-display-bio">
                         <p><strong>プロフィール</strong></p>
                         <p id="profile-display-text">プロフィールの詳細説明文がここに表示されます。</p>

@@ -10,7 +10,6 @@ var SLASH_COMMANDS = [
         arguments: [
             { name: 'home', description: 'ホームページ' },
             { name: 'thread', description: 'スレッド' },
-            { name: 'trend', description: 'トレンド' },
             { name: 'follows', description: 'フォロー' },
             { name: 'profile', description: 'プロフィール' }
         ]
@@ -19,6 +18,15 @@ var SLASH_COMMANDS = [
         name: 'upload', 
         description: 'ファイルを選択してアップロード',
         arguments: []
+    }
+    ,{ 
+        name: 'edit',
+        description: 'プロフィール/アイコン/ヘッダーを編集',
+        arguments: [
+            { name: 'profile', description: '自己紹介文を編集' },
+            { name: 'icon', description: 'アイコン画像を選択' },
+            { name: 'header', description: 'ヘッダー画像を選択' }
+        ]
     }
 ];
 
@@ -97,6 +105,10 @@ function initDatabase() {
         if (!debugUser) {
             addUser('Debug User', 'lake666486', 'lake666486');
         }
+        var debugUser2 = getUserById('sharp4863');
+        if (!debugUser2) {
+            addUser('Debug User 2', 'sharp4863', 'sharp4863');
+        }
         
         saveDatabase();
     });
@@ -122,24 +134,55 @@ function sqlQuery(query, params) {
     if (!db) {
         return [];
     }
-    var stmt = db.prepare(query);
-            if (postOpen) {
-                postOpen.addEventListener('click', function () {
-                    // 常時オープンのため明示的に閉じない
-                    postForm.classList.remove('post-form--closed');
-                    if (postInput) {
-                        postInput.focus();
-                    }
-                });
+    params = params || [];
+    try {
+        var stmt = db.prepare(query);
+        if (params && params.length) stmt.bind(params);
+        var rows = [];
+        while (stmt.step()) {
+            if (typeof stmt.getAsObject === 'function') {
+                rows.push(stmt.getAsObject());
+            } else {
+                var ra = stmt.get();
+                var cols = stmt.getColumnNames ? stmt.getColumnNames() : null;
+                if (cols && cols.length === ra.length) {
+                    var obj = {};
+                    for (var i = 0; i < cols.length; i++) obj[cols[i]] = ra[i];
+                    rows.push(obj);
+                } else {
+                    rows.push(ra);
+                }
             }
-
-            // ページに投稿リストがある場合のみ初期表示でレンダリング
-            if (postsList) {
-                renderPosts(postsList);
-            }
+        }
+        try { stmt.free(); } catch (e) {}
+        return rows;
+    } catch (err) {
+        console.error('SQL error:', err, query, params);
+        return [];
+    }
+}
 function addUser(name, id, password) {
     db.run('INSERT INTO users VALUES (?, ?, ?)', [name, id, password]);
     saveDatabase();
+}
+
+function getUserById(id) {
+    if (!id) return null;
+    var rows = sqlQuery('SELECT name, id, password FROM users WHERE id = ? LIMIT 1', [id]);
+    if (!rows || rows.length === 0) return null;
+    var r = rows[0];
+    // support both object and array row formats
+    return {
+        name: (r.name !== undefined) ? r.name : (r[0] !== undefined ? r[0] : null),
+        id: (r.id !== undefined) ? r.id : (r[1] !== undefined ? r[1] : null),
+        password: (r.password !== undefined) ? r.password : (r[2] !== undefined ? r[2] : null)
+    };
+}
+
+function getUserByCredentials(id, password) {
+    var user = getUserById(id);
+    if (!user) return null;
+    return user.password === password ? { id: user.id, name: user.name } : null;
 }
 
 function savePost(userName, userId, content, datetime, fileName, fileType, fileData) {
@@ -158,23 +201,20 @@ function deletePost(rowid) {
 
 function getCurrentUser() {
     var id = localStorage.getItem('codechatCurrentUser');
-    if (!id) {
-        return null;
-    }
+    if (!id) return null;
     var user = getUserById(id);
     return user ? { id: user.id, name: user.name } : null;
 }
 
 function escapeHtml(text) {
-    return text
+    if (text === null || text === undefined) return '';
+    return String(text)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
-
-// ユーザーIDからアイコン絵文字を生成
 var userIconCache = {};
 var iconEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰', '🪲', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦉', '🦇', '🐓', '🦃', '🦚', '🦜', '🦢', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖'];
 
@@ -257,6 +297,35 @@ function createHiddenFileInput() {
     return hiddenFileInput;
 }
 
+// 画像編集用の隠し入力（アイコン/ヘッダー編集用）
+var hiddenImageInput = null;
+var imageEditHandler = null; // function(dataURL, file)
+
+function createHiddenImageInput() {
+    if (hiddenImageInput) return hiddenImageInput;
+    hiddenImageInput = document.createElement('input');
+    hiddenImageInput.type = 'file';
+    hiddenImageInput.accept = 'image/*';
+    hiddenImageInput.style.display = 'none';
+    hiddenImageInput.addEventListener('change', function () {
+        if (!this.files || !this.files.length) return;
+        var file = this.files[0];
+        var reader = new FileReader();
+        reader.onload = function () {
+            try {
+                if (typeof imageEditHandler === 'function') {
+                    imageEditHandler(reader.result, file);
+                }
+            } finally {
+                imageEditHandler = null;
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+    document.body.appendChild(hiddenImageInput);
+    return hiddenImageInput;
+}
+
 function showSystemNotice(postsList, text) {
     if (!postsList) {
         return;
@@ -281,40 +350,42 @@ function updatePostTextPlaceholder() {
 }
 
 function getMatchingCommands(inputValue) {
-    var trimmed = inputValue.trim();
-    // 先頭のスラッシュを1つに正規化（// などにも対応）
-    trimmed = trimmed.replace(/^\/+/, '/');
-    if (!trimmed.startsWith('/')) {
-        return [];
-    }
-    
-    var commandAndArgs = trimmed.slice(1).toLowerCase();
-    var parts = commandAndArgs.split(/\s+/);
-    var commandText = parts[0];
-    var argumentText = parts.slice(1).join(' ').trim();
-    
+    if (!inputValue) return [];
+    console.log('[autocomplete] getMatchingCommands input:', inputValue);
+    // 正規化：先頭のスラッシュは1つに
+    var normalized = inputValue.replace(/^\/+/, '/');
+    if (!normalized.startsWith('/')) return [];
+
+    // without leading '/'
+    var withoutLead = normalized.slice(1);
+    var parts = withoutLead.split(/\s+/);
+    var commandText = (parts[0] || '').toLowerCase();
+    var argumentText = parts.slice(1).join(' ').toLowerCase();
+    var argumentTextTrimmed = argumentText.trim();
+    // 末尾にスペースがある場合は引数入力が完了したと扱わず、候補を全表示する
+    var argumentFilterText = hasTrailingSpace ? '' : argumentTextTrimmed;
+
+    // まだコマンド文字列を入力していない場合（例: '/'）
     if (commandText === '') {
         return SLASH_COMMANDS.map(function (cmd) {
-            return {
-                type: 'command',
-                name: cmd.name,
-                description: cmd.description,
-                displayText: '/' + cmd.name
-            };
+            return { type: 'command', name: cmd.name, description: cmd.description, displayText: '/' + cmd.name };
         });
     }
-    
+
     var matchingCommands = SLASH_COMMANDS.filter(function (cmd) {
         return cmd.name.indexOf(commandText) === 0;
     });
-    
-    // コマンドが確定している場合（スペースが入力されている）、引数を提案
-    if (parts.length > 1 && matchingCommands.length === 1) {
+
+    // ユーザーがスペースを入力した、または引数候補が既にある場合、
+    // あるいはコマンドが完全一致している場合は引数を提案
+    var hasTrailingSpace = /\s$/.test(normalized);
+    var wantsArgs = hasTrailingSpace || parts.length > 1 || (matchingCommands.length === 1 && matchingCommands[0].name === commandText);
+    if (matchingCommands.length === 1 && wantsArgs) {
         var cmd = matchingCommands[0];
         if (cmd.arguments && cmd.arguments.length > 0) {
-            return cmd.arguments
+                return cmd.arguments
                 .filter(function (arg) {
-                    return arg.name.indexOf(argumentText) === 0;
+                    return arg.name.indexOf(argumentFilterText) === 0;
                 })
                 .map(function (arg) {
                     return {
@@ -326,20 +397,18 @@ function getMatchingCommands(inputValue) {
                     };
                 });
         }
+        return [];
     }
-    
-    // コマンドがまだ確定していない場合
+
+    // デフォルトはコマンド候補
     return matchingCommands.map(function (cmd) {
-        return {
-            type: 'command',
-            name: cmd.name,
-            description: cmd.description,
-            displayText: '/' + cmd.name
-        };
+        return { type: 'command', name: cmd.name, description: cmd.description, displayText: '/' + cmd.name };
     });
 }
 
 function renderAutocompleteList(list, commands, selectedIndex) {
+    console.log('[autocomplete] renderAutocompleteList count=', commands.length, 'selected=', selectedIndex);
+    if (!list) return;
     list.innerHTML = '';
     
     if (commands.length === 0) {
@@ -353,11 +422,14 @@ function renderAutocompleteList(list, commands, selectedIndex) {
         if (index === selectedIndex) {
             li.classList.add('selected');
         }
-        li.setAttribute('data-command', cmd.name);
         li.setAttribute('data-type', cmd.type);
         if (cmd.type === 'argument') {
+            // argument items: store parent command name and argument separately
+            li.setAttribute('data-command', cmd.commandName || '');
             li.setAttribute('data-argument', cmd.name);
             li.setAttribute('data-command-name', cmd.commandName);
+        } else {
+            li.setAttribute('data-command', cmd.name);
         }
         li.innerHTML = '<span class="autocomplete-item-label">' + escapeHtml(cmd.displayText) + '</span>' +
                        '<span class="autocomplete-item-desc">' + escapeHtml(cmd.description) + '</span>';
@@ -369,9 +441,9 @@ function renderAutocompleteList(list, commands, selectedIndex) {
 
 function selectCommand(input, command, argument) {
     if (argument) {
-        input.value = '/' + command + ' ' + argument + ' ';
+        input.value = '/' + command + ' ' + argument;
     } else {
-        input.value = '/' + command + ' ';
+        input.value = '/' + command;
     }
     var list = document.getElementById('autocomplete-list');
     if (list) {
@@ -487,13 +559,76 @@ function handleSiteCommand(value, postsList) {
         return true;
     }
 
+    if (command === 'edit') {
+        var partsArg = argument.split(/\s+/);
+        var sub = partsArg[0] ? partsArg[0].toLowerCase() : '';
+        var rest = partsArg.slice(1).join(' ').trim();
+        var currentUser = getCurrentUser();
+        if (!currentUser) {
+            showSystemNotice(postsList, '編集にはログインが必要です。');
+            return true;
+        }
+
+        if (sub === 'profile') {
+            if (!rest) {
+                showSystemNotice(postsList, '使用例: /edit profile ここに自己紹介文');
+                return true;
+            }
+            localStorage.setItem('codechat_bio_' + currentUser.id, rest);
+            showSystemNotice(postsList, 'プロフィールを更新しました。');
+            // 更新が反映されるように DOM を更新
+            var pd = document.getElementById('profile-display-text');
+            var pb = document.getElementById('profile-bio');
+            if (pd) pd.textContent = rest;
+            if (pb) pb.textContent = rest;
+            return true;
+        }
+
+        if (sub === 'icon' || sub === 'header') {
+            imageEditHandler = function (dataURL, file) {
+                var key = sub === 'icon' ? 'codechat_icon_' + currentUser.id : 'codechat_header_' + currentUser.id;
+                try {
+                    localStorage.setItem(key, dataURL);
+                    showSystemNotice(postsList, (sub === 'icon' ? 'アイコン' : 'ヘッダー') + ' を保存しました。');
+                } catch (e) {
+                    console.error('Failed to save image to localStorage:', e);
+                    if (e && e.name === 'QuotaExceededError') {
+                        showSystemNotice(postsList, '画像が大きすぎて保存できません。サイズを小さくしてください。');
+                    } else {
+                        showSystemNotice(postsList, '画像の保存中にエラーが発生しました。');
+                    }
+                }
+                // DOM 反映
+                var avatarEl = document.querySelector('.profile-avatar');
+                var bannerEl = document.querySelector('.profile-banner');
+                try {
+                    if (sub === 'icon' && avatarEl) {
+                        avatarEl.innerHTML = '<img src="' + escapeHtml(dataURL) + '" alt="avatar">';
+                    }
+                    if (sub === 'header' && bannerEl) {
+                        bannerEl.style.backgroundImage = 'url("' + escapeHtml(dataURL) + '")';
+                    }
+                } catch (err) {
+                    console.error('DOM update error for image edit:', err);
+                }
+            };
+            var imgInput = createHiddenImageInput();
+            imgInput.value = '';
+            imgInput.click();
+            return true;
+        }
+        showSystemNotice(postsList, '対応していない /edit サブコマンドです。profile, icon, header を指定してください。');
+        return true;
+    }
+
     return false;
 }
 
 function renderPosts(postsList) {
-    if (!postsList) {
-        return;
-    }
+    // 投稿は home.html のみで表示する
+    var currentFile = (location.pathname || '').split('/').pop();
+    if (currentFile !== 'home.html') return;
+    if (!postsList) return;
     postsList.innerHTML = '';
     var posts = getPosts();
     posts.forEach(function (post) {
@@ -550,17 +685,34 @@ function renderPosts(postsList) {
     });
 }
 
-href = location.href;
-
-var links = document.querySelectorAll('.nav-list > li > a');
-
-for (var i = 0; i < links.length; i++) {
-    if (links[i].href == href) {
-        document.querySelectorAll('.nav-list > li')[i].classList.add('current');
+// ナビリンクのハイライト処理：ハッシュやルート表記の違いを吸収して比較
+(function () {
+    var links = document.querySelectorAll('.nav-list > li > a');
+    var currentPath = location.pathname || '/';
+    if (currentPath === '/' || currentPath === '') {
+        currentPath = '/index.html';
     }
-}
+    for (var i = 0; i < links.length; i++) {
+        var li = document.querySelectorAll('.nav-list > li')[i];
+        var linkPath = '';
+        try {
+            linkPath = new URL(links[i].href, location.origin).pathname;
+        } catch (e) {
+            var a = document.createElement('a');
+            a.href = links[i].getAttribute('href');
+            linkPath = a.pathname;
+        }
+        if (linkPath === '/' || linkPath === '') {
+            linkPath = '/index.html';
+        }
+        if (linkPath === currentPath) {
+            if (li) li.classList.add('current');
+        }
+    }
+})();
 
 document.addEventListener('DOMContentLoaded', function () {
+    console.log('[app] DOMContentLoaded');
     initDatabase().then(function () {
         updatePostTextPlaceholder();
         var authTabs = document.querySelectorAll('.auth-tab');
@@ -652,7 +804,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 localStorage.setItem('codechatCurrentUser', id);
-                location.href = '/home';
+                location.href = 'home.html';
             });
         }
 
@@ -677,10 +829,19 @@ document.addEventListener('DOMContentLoaded', function () {
             // オートコンプリート機能
             if (postInput) {
                 var autocompleteList = document.getElementById('autocomplete-list');
+                // autocomplete-list が存在しない場合は自動で生成して postInput の直後に差し込む
+                if (!autocompleteList) {
+                    autocompleteList = document.createElement('ul');
+                    autocompleteList.id = 'autocomplete-list';
+                    autocompleteList.className = 'autocomplete-list';
+                    console.log('[autocomplete] created autocomplete-list element');
+                    postInput.parentNode.insertBefore(autocompleteList, postInput.nextSibling);
+                }
                 var currentSelectedIndex = -1;
                 
                 postInput.addEventListener('input', function () {
                     var value = postInput.value;
+                    console.log('[autocomplete] input event value=', value);
                     var commands = getMatchingCommands(value);
                     currentSelectedIndex = -1;
                     renderAutocompleteList(autocompleteList, commands, currentSelectedIndex);
@@ -710,18 +871,18 @@ document.addEventListener('DOMContentLoaded', function () {
                         event.preventDefault();
                         var items = autocompleteList.querySelectorAll('.autocomplete-item');
                         var itemCount = items.length;
+                        if (itemCount === 0) return;
 
-                        if (itemCount > 0) {
-                            // 補完確定：選択中がなければ先頭を採用
-                            if (currentSelectedIndex < 0) {
-                                currentSelectedIndex = 0;
-                            }
-                            var selectedItem = items[currentSelectedIndex];
-                            var command = selectedItem.getAttribute('data-command');
-                            var argument = selectedItem.getAttribute('data-argument');
-                            selectCommand(postInput, command, argument);
-                            currentSelectedIndex = -1;
+                        // 次の候補へ循環（選択のみ行い、入力値は変更しない）
+                        currentSelectedIndex = (currentSelectedIndex + 1) % itemCount;
+                        renderAutocompleteList(autocompleteList, getMatchingCommands(postInput.value), currentSelectedIndex);
+                        // 選択項目をスクロールして見えるようにする
+                        items = autocompleteList.querySelectorAll('.autocomplete-item');
+                        var sel = items[currentSelectedIndex];
+                        if (sel) {
+                            sel.scrollIntoView(false);
                         }
+                    
                     } else if (event.key === 'Enter' && currentSelectedIndex >= 0) {
                         event.preventDefault();
                         var selectedItem = items[currentSelectedIndex];
@@ -768,7 +929,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     // 先頭のスラッシュは1つに正規化（//open などにも対応）
                     var normalized = value.replace(/^\/+/, '/');
 
-                    var commandMatch = normalized.match(/^\/open\s+(thread|home|trend|follows|profile)\s*$/i);
+                    var commandMatch = normalized.match(/^\/open\s+(thread|home|follows|profile)\s*$/i);
                     if (commandMatch) {
                         var target = commandMatch[1].toLowerCase();
                         var url = target === 'home' ? 'home.html' : target + '.html';
@@ -836,6 +997,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                     if (profileDisplayText) {
                         profileDisplayText.textContent = userBio || 'まだプロフィール情報がありません。';
+                    }
+                    // アイコンとヘッダー画像を読み込み
+                    var iconData = localStorage.getItem('codechat_icon_' + currentUser.id);
+                    var headerData = localStorage.getItem('codechat_header_' + currentUser.id);
+                    var avatarEl = document.querySelector('.profile-avatar');
+                    var bannerEl = document.querySelector('.profile-banner');
+                    if (iconData && avatarEl) {
+                        try { avatarEl.innerHTML = '<img src="' + escapeHtml(iconData) + '" alt="avatar">'; } catch (e) {}
+                    }
+                    if (headerData && bannerEl) {
+                        try { bannerEl.style.backgroundImage = 'url("' + escapeHtml(headerData) + '")'; } catch (e) {}
                     }
                     
                     // プロフィール編集フォームのサブミット処理
