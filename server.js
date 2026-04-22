@@ -6,7 +6,7 @@ const PORT = 8000;
 const DIR = __dirname;
 
 const server = http.createServer((req, res) => {
-    let filePath = path.join(DIR, req.url === '/' ? 'index.html' : req.url);
+    let filePath = path.join(DIR, req.url === '/' ? 'index.html' : req.url === '/home' ? 'home.html' : req.url);
     let extname = path.extname(filePath).toLowerCase();
 
     const mimeTypes = {

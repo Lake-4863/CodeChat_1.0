@@ -662,7 +662,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 localStorage.setItem('codechatCurrentUser', id);
-                location.href = 'home.html';
+                location.href = '/home';
             });
         }
 
