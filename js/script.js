@@ -1,12 +1,26 @@
-var SQL = null;
-var db = null;
-var sqliteStorageKey = 'codechatSQLite';
-
 // スラッシュコマンドの定義
 var SLASH_COMMANDS = [
-    { name: 'open', description: 'ページを開く (thread, home, trend, follows, profile)' },
-    { name: 'file', description: 'ファイル参照モードに移行' },
-    { name: 'upload', description: 'ファイルを選択してアップロード' }
+    { 
+        name: 'open', 
+        description: 'ページを開く',
+        arguments: [
+            { name: 'home', description: 'ホームページ' },
+            { name: 'thread', description: 'スレッド' },
+            { name: 'trend', description: 'トレンド' },
+            { name: 'follows', description: 'フォロー' },
+            { name: 'profile', description: 'プロフィール' }
+        ]
+    },
+    { 
+        name: 'file', 
+        description: 'ファイル参照モードに移行',
+        arguments: []
+    },
+    { 
+        name: 'upload', 
+        description: 'ファイルを選択してアップロード',
+        arguments: []
+    }
 ];
 
 function base64ToUint8Array(base64) {
@@ -260,18 +274,58 @@ function updatePostTextPlaceholder() {
 
 function getMatchingCommands(inputValue) {
     var trimmed = inputValue.trim();
-    if (!trimmed.startsWith('//')) {
+    if (!trimmed.startsWith('/')) {
         return [];
     }
     
-    var commandText = trimmed.slice(2).toLowerCase();
+    var commandAndArgs = trimmed.slice(1).toLowerCase();
+    var parts = commandAndArgs.split(/\s+/);
+    var commandText = parts[0];
+    var argumentText = parts.slice(1).join(' ').trim();
     
     if (commandText === '') {
-        return SLASH_COMMANDS;
+        return SLASH_COMMANDS.map(function (cmd) {
+            return {
+                type: 'command',
+                name: cmd.name,
+                description: cmd.description,
+                displayText: '/' + cmd.name
+            };
+        });
     }
     
-    return SLASH_COMMANDS.filter(function (cmd) {
+    var matchingCommands = SLASH_COMMANDS.filter(function (cmd) {
         return cmd.name.indexOf(commandText) === 0;
+    });
+    
+    // コマンドが確定している場合（スペースが入力されている）、引数を提案
+    if (parts.length > 1 && matchingCommands.length === 1) {
+        var cmd = matchingCommands[0];
+        if (cmd.arguments && cmd.arguments.length > 0) {
+            return cmd.arguments
+                .filter(function (arg) {
+                    return arg.name.indexOf(argumentText) === 0;
+                })
+                .map(function (arg) {
+                    return {
+                        type: 'argument',
+                        commandName: cmd.name,
+                        name: arg.name,
+                        description: arg.description,
+                        displayText: '/' + cmd.name + ' ' + arg.name
+                    };
+                });
+        }
+    }
+    
+    // コマンドがまだ確定していない場合
+    return matchingCommands.map(function (cmd) {
+        return {
+            type: 'command',
+            name: cmd.name,
+            description: cmd.description,
+            displayText: '/' + cmd.name
+        };
     });
 }
 
@@ -290,7 +344,12 @@ function renderAutocompleteList(list, commands, selectedIndex) {
             li.classList.add('selected');
         }
         li.setAttribute('data-command', cmd.name);
-        li.innerHTML = '<span class="autocomplete-item-label">//' + escapeHtml(cmd.name) + '</span>' +
+        li.setAttribute('data-type', cmd.type);
+        if (cmd.type === 'argument') {
+            li.setAttribute('data-argument', cmd.name);
+            li.setAttribute('data-command-name', cmd.commandName);
+        }
+        li.innerHTML = '<span class="autocomplete-item-label">' + escapeHtml(cmd.displayText) + '</span>' +
                        '<span class="autocomplete-item-desc">' + escapeHtml(cmd.description) + '</span>';
         list.appendChild(li);
     });
@@ -298,8 +357,12 @@ function renderAutocompleteList(list, commands, selectedIndex) {
     list.classList.add('active');
 }
 
-function selectCommand(input, command) {
-    input.value = '//' + command;
+function selectCommand(input, command, argument) {
+    if (argument) {
+        input.value = '/' + command + ' ' + argument + ' ';
+    } else {
+        input.value = '/' + command + ' ';
+    }
     var list = document.getElementById('autocomplete-list');
     if (list) {
         list.classList.remove('active');
@@ -394,15 +457,15 @@ function renderProfilePosts(userPosts, userId, profilePostsList) {
 
 function handleSiteCommand(value, postsList) {
     var parts = value.trim().split(/\s+/);
-    if (parts[0].indexOf('//') !== 0) {
+    if (parts[0].indexOf('/') !== 0) {
         return false;
     }
-    var command = parts[0].slice(2).toLowerCase();
+    var command = parts[0].slice(1).toLowerCase();
     var argument = parts.slice(1).join(' ').trim();
 
     if (command === 'file') {
         updatePostTextPlaceholder();
-        showSystemNotice(postsList, 'ファイル参照モードに移行しました。続けて //upload でファイルを選択してください。');
+        showSystemNotice(postsList, 'ファイル参照モードに移行しました。続けて /upload でファイルを選択してください。');
         return true;
     }
 
@@ -648,7 +711,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         event.preventDefault();
                         var selectedItem = items[currentSelectedIndex];
                         var command = selectedItem.getAttribute('data-command');
-                        selectCommand(postInput, command);
+                        var argument = selectedItem.getAttribute('data-argument');
+                        selectCommand(postInput, command, argument);
                         currentSelectedIndex = -1;
                     } else if (event.key === 'Escape') {
                         autocompleteList.classList.remove('active');
@@ -668,7 +732,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (event.target.closest('.autocomplete-item')) {
                         var item = event.target.closest('.autocomplete-item');
                         var command = item.getAttribute('data-command');
-                        selectCommand(postInput, command);
+                        var argument = item.getAttribute('data-argument');
+                        selectCommand(postInput, command, argument);
                         currentSelectedIndex = -1;
                         postInput.focus();
                     }
@@ -687,7 +752,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         return;
                     }
 
-                    var commandMatch = value.match(/^\/\/open\s+(thread|home|trend|follows|profile)\s*$/i);
+                    var commandMatch = value.match(/^\/open\s+(thread|home|trend|follows|profile)\s*$/i);
                     if (commandMatch) {
                         var target = commandMatch[1].toLowerCase();
                         var url = target === 'home' ? 'home.html' : target + '.html';
@@ -695,7 +760,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         return;
                     }
 
-                    if (value.indexOf('//') === 0) {
+                    if (value.indexOf('/') === 0) {
                         if (handleSiteCommand(value, postsList)) {
                             postInput.value = '';
                             postInput.focus();
