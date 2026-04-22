@@ -1,11 +1,11 @@
 @charset "UTF-8";
 @font-face {
     font-family: 'english';
-    src: url(../fonts/MADE\ Evolve\ Sans\ Thin\ EVO\ \(PERSONAL\ USE\).woff2) format('woff2');
+    src: url(../fonts/origin-en.woff2) format('woff2');
 }
 @font-face {
     font-family: 'japanese';
-    src: url(../fonts/Kaisotai-Next-UP-B.woff2);
+    src: url(../fonts/origin-ja.woff2) format('woff2');
 }
 
 /* 共通部分
@@ -254,7 +254,7 @@ img {
     transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
     flex-shrink: 0;
 }
-}
+
 .post-form__submit:hover {
     transform: translateY(-1px);
     box-shadow: 0 14px 22px rgba(0, 0, 0, 0.18);

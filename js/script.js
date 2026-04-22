@@ -1,3 +1,7 @@
+var SQL = null;
+var db = null;
+var sqliteStorageKey = 'codechatSQLite';
+
 // スラッシュコマンドの定義
 var SLASH_COMMANDS = [
     { 
@@ -62,8 +66,24 @@ function loadDatabase() {
 }
 
 function initDatabase() {
+    // initSqlJsが読み込まれるまで待機
     if (typeof initSqlJs !== 'function') {
-        return Promise.reject(new Error('SQLite ライブラリが読み込まれていません。'));
+        console.warn('SQL.jsライブラリが読み込まれていません。1秒後に再試行します。');
+        return new Promise(function(resolve, reject) {
+            setTimeout(function() {
+                if (typeof initSqlJs === 'function') {
+                    resolve(initDatabase());
+                } else {
+                    console.error('SQL.jsライブラリの読み込みに失敗しました。');
+                    reject(new Error('SQLite ライブラリが読み込まれていません。'));
+                }
+            }, 1000);
+        }).then(function(result) {
+            return result;
+        }).catch(function(err) {
+            console.error('SQLite初期化エラー:', err);
+            throw err;
+        });
     }
 
     return initSqlJs({
@@ -707,6 +727,19 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (currentSelectedIndex >= 0) {
                             autocompleteList.querySelectorAll('.autocomplete-item')[currentSelectedIndex].scrollIntoView(false);
                         }
+                    } else if (event.key === 'Tab') {
+                        event.preventDefault();
+                        var items = autocompleteList.querySelectorAll('.autocomplete-item');
+                        var itemCount = items.length;
+
+                        if (itemCount > 0) {
+                            // 予測変換がある場合、次の項目を選択
+                            currentSelectedIndex = (currentSelectedIndex + 1) % itemCount;
+                            renderAutocompleteList(autocompleteList, getMatchingCommands(postInput.value), currentSelectedIndex);
+                            if (currentSelectedIndex >= 0) {
+                                autocompleteList.querySelectorAll('.autocomplete-item')[currentSelectedIndex].scrollIntoView(false);
+                            }
+                        }
                     } else if (event.key === 'Enter' && currentSelectedIndex >= 0) {
                         event.preventDefault();
                         var selectedItem = items[currentSelectedIndex];
@@ -833,5 +866,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }).catch(function (error) {
         console.error('SQLite 初期化エラー:', error);
+        alert('システム初期化エラーが発生しました。ページをリロードしてください。');
     });
 });

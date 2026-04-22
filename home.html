@@ -56,6 +56,16 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script>
+        // SQL.jsの初期化を確認
+        if (typeof initSqlJs === 'undefined') {
+            console.error('SQL.jsが読み込まれていません。別の方法で読み込みます。');
+            // フォールバック: メインスクリプトを読み込む
+            var script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql.js';
+            document.head.appendChild(script);
+        }
+    </script>
     <script src="js/script.js"></script>
 </body>
 </html>
