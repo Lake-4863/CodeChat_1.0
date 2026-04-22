@@ -123,27 +123,20 @@ function sqlQuery(query, params) {
         return [];
     }
     var stmt = db.prepare(query);
-    if (params) {
-        stmt.bind(params);
-    }
-    var rows = [];
-    while (stmt.step()) {
-        rows.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return rows;
-}
+            if (postOpen) {
+                postOpen.addEventListener('click', function () {
+                    // 常時オープンのため明示的に閉じない
+                    postForm.classList.remove('post-form--closed');
+                    if (postInput) {
+                        postInput.focus();
+                    }
+                });
+            }
 
-function getUserById(id) {
-    var rows = sqlQuery('SELECT name, id, password FROM users WHERE id = ?', [id]);
-    return rows.length ? rows[0] : null;
-}
-
-function getUserByCredentials(id, password) {
-    var rows = sqlQuery('SELECT name, id FROM users WHERE id = ? AND password = ?', [id, password]);
-    return rows.length ? rows[0] : null;
-}
-
+            // ページに投稿リストがある場合のみ初期表示でレンダリング
+            if (postsList) {
+                renderPosts(postsList);
+            }
 function addUser(name, id, password) {
     db.run('INSERT INTO users VALUES (?, ?, ?)', [name, id, password]);
     saveDatabase();
@@ -289,6 +282,8 @@ function updatePostTextPlaceholder() {
 
 function getMatchingCommands(inputValue) {
     var trimmed = inputValue.trim();
+    // 先頭のスラッシュを1つに正規化（// などにも対応）
+    trimmed = trimmed.replace(/^\/+/, '/');
     if (!trimmed.startsWith('/')) {
         return [];
     }
@@ -673,18 +668,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
             
-            // Tabキー処理で投稿フォームの開閉を切り替え
-            document.addEventListener('keydown', function (event) {
-                if (event.key === 'Tab') {
-                    event.preventDefault();
-                    postForm.classList.toggle('post-form--closed');
-                    
-                    // フォームが開いている場合、入力フィールドにフォーカスを移す
-                    if (!postForm.classList.contains('post-form--closed') && postInput) {
-                        postInput.focus();
-                    }
-                }
-            });
+            // （削除済）Tabキーでのフォーム開閉は補完と競合するため無効化
 
             if (postsList) {
                 renderPosts(postsList);
@@ -728,12 +712,15 @@ document.addEventListener('DOMContentLoaded', function () {
                         var itemCount = items.length;
 
                         if (itemCount > 0) {
-                            // 予測変換がある場合、次の項目を選択
-                            currentSelectedIndex = (currentSelectedIndex + 1) % itemCount;
-                            renderAutocompleteList(autocompleteList, getMatchingCommands(postInput.value), currentSelectedIndex);
-                            if (currentSelectedIndex >= 0) {
-                                autocompleteList.querySelectorAll('.autocomplete-item')[currentSelectedIndex].scrollIntoView(false);
+                            // 補完確定：選択中がなければ先頭を採用
+                            if (currentSelectedIndex < 0) {
+                                currentSelectedIndex = 0;
                             }
+                            var selectedItem = items[currentSelectedIndex];
+                            var command = selectedItem.getAttribute('data-command');
+                            var argument = selectedItem.getAttribute('data-argument');
+                            selectCommand(postInput, command, argument);
+                            currentSelectedIndex = -1;
                         }
                     } else if (event.key === 'Enter' && currentSelectedIndex >= 0) {
                         event.preventDefault();
@@ -768,10 +755,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
 
-            if (postsList && postInput) {
-                // 初期表示：投稿を読み込んで表示
-                renderPosts(postsList);
-                
+            if (postInput) {
+                // submit ハンドラは投稿リストの有無にかかわらず登録する
                 postForm.addEventListener('submit', function (event) {
                     event.preventDefault();
 
@@ -780,7 +765,10 @@ document.addEventListener('DOMContentLoaded', function () {
                         return;
                     }
 
-                    var commandMatch = value.match(/^\/open\s+(thread|home|trend|follows|profile)\s*$/i);
+                    // 先頭のスラッシュは1つに正規化（//open などにも対応）
+                    var normalized = value.replace(/^\/+/, '/');
+
+                    var commandMatch = normalized.match(/^\/open\s+(thread|home|trend|follows|profile)\s*$/i);
                     if (commandMatch) {
                         var target = commandMatch[1].toLowerCase();
                         var url = target === 'home' ? 'home.html' : target + '.html';
@@ -788,13 +776,19 @@ document.addEventListener('DOMContentLoaded', function () {
                         return;
                     }
 
-                    if (value.indexOf('/') === 0) {
-                        if (handleSiteCommand(value, postsList)) {
+                    if (normalized.indexOf('/') === 0) {
+                        if (handleSiteCommand(normalized, postsList)) {
                             postInput.value = '';
                             postInput.focus();
                             return;
                         }
-                        alert('不明なコマンドです。例: //open thread');
+                        alert('不明なコマンドです。例: /open thread');
+                        return;
+                    }
+
+                    // コマンドでなければ投稿扱い。ただし投稿はホーム画面（postsListがある場合）のみ許可する
+                    if (!postsList) {
+                        alert('投稿はホーム画面で行ってください。');
                         return;
                     }
 
