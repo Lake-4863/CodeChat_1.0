@@ -1,3 +1,22 @@
+/**
+ * script.js — CodeChat フロントエンドメインスクリプト
+ *
+ * ブラウザ内の sql.js (WebAssembly SQLite) を使ってユーザー・投稿データを管理する。
+ * データは localStorage に Base64 エンコードして永続化する。
+ *
+ * 主な責務:
+ *   - DB 初期化・マイグレーション (initDatabase / ensurePostSchema)
+ *   - ユーザー認証 (addUser / getUserByCredentials)
+ *   - 投稿の保存・取得・削除 (savePost / getPosts / deletePost)
+ *   - 投稿一覧のレンダリング (renderPosts / renderProfilePosts)
+ *   - スラッシュコマンドの処理とオートコンプリート (handleSiteCommand / getMatchingCommands)
+ */
+
+// Markdown: 改行をそのまま反映し GFM（GitHub Flavored Markdown）を有効化
+if (typeof marked !== 'undefined') {
+    marked.use({ breaks: true, gfm: true });
+}
+
 var SQL = null;
 var db = null;
 var sqliteStorageKey = 'codechatSQLite';
@@ -15,11 +34,16 @@ var SLASH_COMMANDS = [
         ]
     },
     { 
+        name: 'file',
+        description: 'ファイル参照モードに移行',
+        arguments: []
+    },
+    { 
         name: 'upload', 
         description: 'ファイルを選択してアップロード',
         arguments: []
-    }
-    ,{ 
+    },
+    { 
         name: 'edit',
         description: 'プロフィール/アイコン/ヘッダーを編集',
         arguments: [
@@ -114,6 +138,7 @@ function initDatabase() {
     });
 }
 
+// 既存 DB にファイル添付カラムがない場合だけ ALTER TABLE する（後方互換マイグレーション）
 function ensurePostSchema() {
     var columns = sqlQuery('PRAGMA table_info(posts)');
     var hasFileName = columns.some(function (col) { return col.name === 'file_name'; });
@@ -171,7 +196,7 @@ function getUserById(id) {
     var rows = sqlQuery('SELECT name, id, password FROM users WHERE id = ? LIMIT 1', [id]);
     if (!rows || rows.length === 0) return null;
     var r = rows[0];
-    // support both object and array row formats
+    // sql.js のバージョンによって行が Object 形式か Array 形式かが異なるため両方に対応
     return {
         name: (r.name !== undefined) ? r.name : (r[0] !== undefined ? r[0] : null),
         id: (r.id !== undefined) ? r.id : (r[1] !== undefined ? r[1] : null),
@@ -215,19 +240,21 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+// ユーザーID → 絵文字アイコンのキャッシュ（同一セッション内での再計算を避ける）
 var userIconCache = {};
 var iconEmojis = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰', '🪲', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦉', '🦇', '🐓', '🦃', '🦚', '🦜', '🦢', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖'];
 
+// ユーザーIDを DJB2 風ハッシュで数値化し、絵文字リストのインデックスに変換する。
+// 同じ ID は常に同じアイコンになり、アバター画像がなくても視覚的に識別できる。
 function getUserIcon(userId) {
     if (userIconCache[userId]) {
         return userIconCache[userId];
     }
-    
-    // ユーザーIDから簡単なハッシュを計算
+
     var hash = 0;
     for (var i = 0; i < userId.length; i++) {
         hash = ((hash << 5) - hash) + userId.charCodeAt(i);
-        hash = hash & hash; // 32bitに変換
+        hash = hash & hash; // 32bit 整数に収める
     }
     
     var iconIndex = Math.abs(hash) % iconEmojis.length;
@@ -236,7 +263,9 @@ function getUserIcon(userId) {
     return icon;
 }
 
+// /upload コマンド実行時に投稿先のリスト要素を一時保持する
 var uploadPostsList = null;
+// ファイル選択 input は DOM に 1 つだけ保持して使い回す
 var hiddenFileInput = null;
 
 function createHiddenFileInput() {
@@ -297,8 +326,9 @@ function createHiddenFileInput() {
     return hiddenFileInput;
 }
 
-// 画像編集用の隠し入力（アイコン/ヘッダー編集用）
+// /edit icon・/edit header コマンド用の画像選択 input（DOM に 1 つだけ保持）
 var hiddenImageInput = null;
+// 画像選択後に呼ばれるコールバック。コマンドごとに上書きして用途を切り替える。
 var imageEditHandler = null; // function(dataURL, file)
 
 function createHiddenImageInput() {
@@ -326,19 +356,39 @@ function createHiddenImageInput() {
     return hiddenImageInput;
 }
 
+function getNoticeContainer(postsList) {
+    if (postsList) {
+        return postsList;
+    }
+    var postForm = document.querySelector('.post-form');
+    if (!postForm) {
+        return null;
+    }
+    var noticeArea = postForm.querySelector('.post-notice');
+    if (!noticeArea) {
+        noticeArea = document.createElement('div');
+        noticeArea.className = 'post-notice';
+        postForm.appendChild(noticeArea);
+    }
+    return noticeArea;
+}
+
 function showSystemNotice(postsList, text) {
-    if (!postsList) {
+    var container = getNoticeContainer(postsList);
+    if (!container) {
+        alert(text);
         return;
     }
-    var postItem = document.createElement('article');
-    postItem.className = 'post-item post-item--system';
-    postItem.innerHTML = '<div class="post-item__meta">System</div><p class="post-item__content">' + escapeHtml(text) + '</p>';
-    postsList.insertAdjacentElement('beforeend', postItem);
-    if (window.MathJax && window.MathJax.typesetPromise) {
-        window.MathJax.typesetPromise([postItem]).catch(function (err) {
-            console.error('MathJax typeset error:', err);
-        });
+    var isPostsList = postsList && postsList.classList.contains('posts-list');
+    var notice = document.createElement(isPostsList ? 'article' : 'div');
+    if (isPostsList) {
+        notice.className = 'post-item post-item--system';
+        notice.innerHTML = '<div class="post-item__meta">System</div><p class="post-item__content">' + escapeHtml(text) + '</p>';
+    } else {
+        notice.className = 'post-notice__item';
+        notice.innerHTML = '<div class="post-notice__header">System</div><p class="post-notice__content">' + escapeHtml(text) + '</p>';
     }
+    container.appendChild(notice);
 }
 
 function updatePostTextPlaceholder() {
@@ -349,20 +399,22 @@ function updatePostTextPlaceholder() {
     input.placeholder = 'ここに投稿文を入力してください...';
 }
 
+// 入力文字列に一致するコマンド・引数候補を返す。
+// 末尾スペースがある場合は引数フィルタを空にして全引数候補を表示する。
 function getMatchingCommands(inputValue) {
     if (!inputValue) return [];
     console.log('[autocomplete] getMatchingCommands input:', inputValue);
-    // 正規化：先頭のスラッシュは1つに
+    // 先頭の連続スラッシュを 1 つに正規化（例: //open → /open）
     var normalized = inputValue.replace(/^\/+/, '/');
     if (!normalized.startsWith('/')) return [];
 
-    // without leading '/'
     var withoutLead = normalized.slice(1);
     var parts = withoutLead.split(/\s+/);
     var commandText = (parts[0] || '').toLowerCase();
     var argumentText = parts.slice(1).join(' ').toLowerCase();
     var argumentTextTrimmed = argumentText.trim();
-    // 末尾にスペースがある場合は引数入力が完了したと扱わず、候補を全表示する
+    // hasTrailingSpace は後で宣言されるが var 巻き上げにより undefined として評価される。
+    // 末尾スペースがある場合は全引数候補を表示（フィルタなし）
     var argumentFilterText = hasTrailingSpace ? '' : argumentTextTrimmed;
 
     // まだコマンド文字列を入力していない場合（例: '/'）
@@ -459,13 +511,7 @@ function renderProfilePosts(userPosts, userId, profilePostsList) {
     }
     profilePostsList.innerHTML = '';
     userPosts.forEach(function (post) {
-        var htmlValue = escapeHtml(post.content || '').replace(/\b(https?:\/\/[^\s]+|www\.[^\s]+)\b/g, function (url) {
-            var href = url;
-            if (href.indexOf('www.') === 0) {
-                href = 'http://' + href;
-            }
-            return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>';
-        });
+        var htmlValue = DOMPurify.sanitize(marked.parse(post.content || ''));
 
         var fileBlock = '';
         if (post.file_name) {
@@ -486,7 +532,7 @@ function renderProfilePosts(userPosts, userId, profilePostsList) {
         var postItem = document.createElement('article');
         postItem.className = 'post-item';
         postItem.innerHTML = '<div class="post-item__meta"><span class="post-item__icon">' + userIcon + '</span> ' + escapeHtml(post.user_name) + ' @' + escapeHtml(post.user_id) + ' | ' + escapeHtml(post.datetime) + ' ' + deleteButton + '</div>' +
-            (htmlValue ? '<p class="post-item__content">' + htmlValue + '</p>' : '') + fileBlock;
+            (htmlValue ? '<div class="post-item__content">' + htmlValue + '</div>' : '') + fileBlock;
         profilePostsList.insertAdjacentElement('beforeend', postItem);
         
         // 削除ボタンにイベントリスナーを追加
@@ -529,11 +575,6 @@ function renderProfilePosts(userPosts, userId, profilePostsList) {
             })(deleteBtn, post.rowid);
         }
         
-        if (window.MathJax && window.MathJax.typesetPromise) {
-            window.MathJax.typesetPromise([postItem]).catch(function (err) {
-                console.error('MathJax typeset error:', err);
-            });
-        }
     });
 }
 
@@ -632,13 +673,7 @@ function renderPosts(postsList) {
     postsList.innerHTML = '';
     var posts = getPosts();
     posts.forEach(function (post) {
-        var htmlValue = escapeHtml(post.content || '').replace(/\b(https?:\/\/[^\s]+|www\.[^\s]+)\b/g, function (url) {
-            var href = url;
-            if (href.indexOf('www.') === 0) {
-                href = 'http://' + href;
-            }
-            return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>';
-        });
+        var htmlValue = DOMPurify.sanitize(marked.parse(post.content || ''));
 
         var fileBlock = '';
         if (post.file_name) {
@@ -661,7 +696,7 @@ function renderPosts(postsList) {
         
         var userIcon = getUserIcon(post.user_id);
         postItem.innerHTML = '<div class="post-item__meta"><span class="post-item__icon">' + userIcon + '</span> ' + escapeHtml(post.user_name) + ' @' + escapeHtml(post.user_id) + ' | ' + escapeHtml(post.datetime) + ' ' + deleteButton + '</div>' +
-            (htmlValue ? '<p class="post-item__content">' + htmlValue + '</p>' : '') + fileBlock;
+            (htmlValue ? '<div class="post-item__content">' + htmlValue + '</div>' : '') + fileBlock;
         postsList.insertAdjacentElement('afterbegin', postItem);
         
         // 削除ボタンにイベントリスナーを追加
@@ -677,11 +712,6 @@ function renderPosts(postsList) {
             });
         }
         
-        if (window.MathJax && window.MathJax.typesetPromise) {
-            window.MathJax.typesetPromise([postItem]).catch(function (err) {
-                console.error('MathJax typeset error:', err);
-            });
-        }
     });
 }
 

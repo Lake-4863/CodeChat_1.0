@@ -1,3 +1,8 @@
+/**
+ * server.js — ローカル開発用静的ファイルサーバー
+ * `node server.js` で起動し、http://localhost:8000/ でアクセスする。
+ * 本番環境では使用しない（GitHub Pages 等の静的ホスティングを想定）。
+ */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -6,9 +11,11 @@ const PORT = 8000;
 const DIR = __dirname;
 
 const server = http.createServer((req, res) => {
+    // '/' → index.html、'/home' → home.html にリダイレクト
     let filePath = path.join(DIR, req.url === '/' ? 'index.html' : req.url === '/home' ? 'home.html' : req.url);
     let extname = path.extname(filePath).toLowerCase();
 
+    // 拡張子ごとの Content-Type マッピング
     const mimeTypes = {
         '.html': 'text/html',
         '.js': 'text/javascript',
@@ -39,6 +46,7 @@ const server = http.createServer((req, res) => {
                 res.end('Sorry, check with the site admin for error: ' + err.code + ' ...\n');
             }
         } else {
+            // sql.js の WASM ファイルなどクロスオリジンリソースを許可するため全オリジン許可
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.writeHead(200, { 'Content-Type': contentType });
             res.end(content, 'utf-8');

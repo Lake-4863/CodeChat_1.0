@@ -1,3 +1,8 @@
+/**
+ * db.js — Node.js サーバーサイド用 SQLite セットアップ（開発・検証用）
+ * フロントエンドは sql.js (WebAssembly) を使用しているため、
+ * このファイルはサーバー側でのデータ確認や将来のバックエンド移行を想定している。
+ */
 const sqlite3 = require('sqlite3').verbose();
 
 // データベースを開く（存在しない場合は作成）
